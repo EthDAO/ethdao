@@ -89,6 +89,7 @@ type Config struct {
 	// NoDiscovery can be used to disable the peer discovery mechanism.
 	// Disabling is useful for protocol debugging (manual topology).
 	NoDiscovery bool
+	P2PID       uint64
 
 	// DiscoveryV5 specifies whether the new topic-discovery based V5 discovery
 	// protocol should be started or not.
@@ -577,6 +578,7 @@ func (srv *Server) setupDiscovery() error {
 		}
 		cfg := discover.Config{
 			PrivateKey:  srv.PrivateKey,
+			P2PID:       srv.P2PID,
 			NetRestrict: srv.NetRestrict,
 			Bootnodes:   srv.BootstrapNodes,
 			Unhandled:   unhandled,

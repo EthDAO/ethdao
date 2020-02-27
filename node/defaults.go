@@ -51,6 +51,7 @@ var DefaultConfig = Config{
 		ListenAddr: ":30303",
 		MaxPeers:   50,
 		NAT:        nat.Any(),
+		P2PID:      0,
 	},
 }
 

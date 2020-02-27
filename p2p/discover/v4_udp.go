@@ -83,6 +83,7 @@ type (
 		Version    uint
 		From, To   rpcEndpoint
 		Expiration uint64
+		P2PID      uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -96,6 +97,7 @@ type (
 
 		ReplyTok   []byte // This contains the hash of the ping packet.
 		Expiration uint64 // Absolute timestamp at which the packet becomes invalid.
+		P2PID      uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -104,6 +106,7 @@ type (
 	findnodeV4 struct {
 		Target     encPubkey
 		Expiration uint64
+		P2PID      uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -112,6 +115,7 @@ type (
 	neighborsV4 struct {
 		Nodes      []rpcNode
 		Expiration uint64
+		P2PID      uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -119,6 +123,7 @@ type (
 	// enrRequestV4 queries for the remote node's record.
 	enrRequestV4 struct {
 		Expiration uint64
+		P2PID      uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -127,6 +132,7 @@ type (
 	enrResponseV4 struct {
 		ReplyTok []byte // Hash of the enrRequest packet.
 		Record   enr.Record
+		P2PID    uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
@@ -154,6 +160,7 @@ type packetV4 interface {
 	// packet name and type for logging purposes.
 	name() string
 	kind() byte
+	p2pID() uint64
 }
 
 func makeEndpoint(addr *net.UDPAddr, tcpPort uint16) rpcEndpoint {
@@ -205,6 +212,7 @@ type UDPv4 struct {
 	tab         *Table
 	closeOnce   sync.Once
 	wg          sync.WaitGroup
+	p2pID       uint64
 
 	addReplyMatcher chan *replyMatcher
 	gotreply        chan reply
@@ -261,6 +269,7 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 	closeCtx, cancel := context.WithCancel(context.Background())
 	t := &UDPv4{
 		conn:            c,
+		p2pID:           cfg.P2PID,
 		priv:            cfg.PrivateKey,
 		netrestrict:     cfg.NetRestrict,
 		localNode:       ln,
@@ -386,6 +395,7 @@ func (t *UDPv4) makePing(toaddr *net.UDPAddr) *pingV4 {
 		From:       t.ourEndpoint(),
 		To:         makeEndpoint(toaddr, 0),
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
+		P2PID:      t.p2pID,
 		Rest:       []rlp.RawValue{seq},
 	}
 }
@@ -453,6 +463,7 @@ func (t *UDPv4) findnode(toid enode.ID, toaddr *net.UDPAddr, target encPubkey) (
 	})
 	t.send(toaddr, toid, &findnodeV4{
 		Target:     target,
+		P2PID:      t.p2pID,
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
 	})
 	return nodes, <-rm.errc
@@ -725,6 +736,9 @@ func (t *UDPv4) handlePacket(from *net.UDPAddr, buf []byte) error {
 		t.log.Debug("Bad discv4 packet", "addr", from, "err", err)
 		return err
 	}
+	if packet.p2pID() != t.p2pID {
+		return fmt.Errorf("p2pID don't match, get %d want %d", packet.p2pID(), t.p2pID)
+	}
 	fromID := fromKey.id()
 	if err == nil {
 		err = packet.preverify(t, from, fromID, fromKey)
@@ -805,8 +819,9 @@ func seqFromTail(tail []rlp.RawValue) uint64 {
 
 // PING/v4
 
-func (req *pingV4) name() string { return "PING/v4" }
-func (req *pingV4) kind() byte   { return p_pingV4 }
+func (req *pingV4) name() string  { return "PING/v4" }
+func (req *pingV4) kind() byte    { return p_pingV4 }
+func (req *pingV4) p2pID() uint64 { return req.P2PID }
 
 func (req *pingV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if expired(req.Expiration) {
@@ -827,6 +842,7 @@ func (req *pingV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac []by
 		To:         makeEndpoint(from, req.From.TCP),
 		ReplyTok:   mac,
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
+		P2PID:      t.p2pID,
 		Rest:       []rlp.RawValue{seq},
 	})
 
@@ -847,8 +863,9 @@ func (req *pingV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac []by
 
 // PONG/v4
 
-func (req *pongV4) name() string { return "PONG/v4" }
-func (req *pongV4) kind() byte   { return p_pongV4 }
+func (req *pongV4) name() string  { return "PONG/v4" }
+func (req *pongV4) kind() byte    { return p_pongV4 }
+func (req *pongV4) p2pID() uint64 { return req.P2PID }
 
 func (req *pongV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if expired(req.Expiration) {
@@ -867,8 +884,9 @@ func (req *pongV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac []by
 
 // FINDNODE/v4
 
-func (req *findnodeV4) name() string { return "FINDNODE/v4" }
-func (req *findnodeV4) kind() byte   { return p_findnodeV4 }
+func (req *findnodeV4) name() string  { return "FINDNODE/v4" }
+func (req *findnodeV4) kind() byte    { return p_findnodeV4 }
+func (req *findnodeV4) p2pID() uint64 { return req.P2PID }
 
 func (req *findnodeV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if expired(req.Expiration) {
@@ -895,7 +913,7 @@ func (req *findnodeV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac 
 
 	// Send neighbors in chunks with at most maxNeighbors per packet
 	// to stay below the packet size limit.
-	p := neighborsV4{Expiration: uint64(time.Now().Add(expiration).Unix())}
+	p := neighborsV4{Expiration: uint64(time.Now().Add(expiration).Unix()), P2PID: t.p2pID}
 	var sent bool
 	for _, n := range closest {
 		if netutil.CheckRelayIP(from.IP, n.IP()) == nil {
@@ -914,8 +932,9 @@ func (req *findnodeV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac 
 
 // NEIGHBORS/v4
 
-func (req *neighborsV4) name() string { return "NEIGHBORS/v4" }
-func (req *neighborsV4) kind() byte   { return p_neighborsV4 }
+func (req *neighborsV4) name() string  { return "NEIGHBORS/v4" }
+func (req *neighborsV4) kind() byte    { return p_neighborsV4 }
+func (req *neighborsV4) p2pID() uint64 { return req.P2PID }
 
 func (req *neighborsV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if expired(req.Expiration) {
@@ -932,8 +951,9 @@ func (req *neighborsV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac
 
 // ENRREQUEST/v4
 
-func (req *enrRequestV4) name() string { return "ENRREQUEST/v4" }
-func (req *enrRequestV4) kind() byte   { return p_enrRequestV4 }
+func (req *enrRequestV4) name() string  { return "ENRREQUEST/v4" }
+func (req *enrRequestV4) kind() byte    { return p_enrRequestV4 }
+func (req *enrRequestV4) p2pID() uint64 { return req.P2PID }
 
 func (req *enrRequestV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if expired(req.Expiration) {
@@ -954,8 +974,9 @@ func (req *enrRequestV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, ma
 
 // ENRRESPONSE/v4
 
-func (req *enrResponseV4) name() string { return "ENRRESPONSE/v4" }
-func (req *enrResponseV4) kind() byte   { return p_enrResponseV4 }
+func (req *enrResponseV4) name() string  { return "ENRRESPONSE/v4" }
+func (req *enrResponseV4) kind() byte    { return p_enrResponseV4 }
+func (req *enrResponseV4) p2pID() uint64 { return req.P2PID }
 
 func (req *enrResponseV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromKey encPubkey) error {
 	if !t.handleReply(fromID, from.IP, req) {

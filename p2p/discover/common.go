@@ -37,6 +37,7 @@ type UDPConn interface {
 type Config struct {
 	// These settings are required and configure the UDP listener:
 	PrivateKey *ecdsa.PrivateKey
+	P2PID      uint64
 
 	// These settings are optional:
 	NetRestrict *netutil.Netlist  // network whitelist

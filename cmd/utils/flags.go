@@ -608,6 +608,11 @@ var (
 		Usage: "Maximum number of network peers (network disabled if set to 0)",
 		Value: node.DefaultConfig.P2P.MaxPeers,
 	}
+	P2PID = cli.Uint64Flag{
+		Name:  "p2pID",
+		Usage: "P2P network ID",
+		Value: node.DefaultConfig.P2P.P2PID,
+	}
 	MaxPendingPeersFlag = cli.IntFlag{
 		Name:  "maxpendpeers",
 		Usage: "Maximum number of pending connection attempts (defaults used if set to 0)",
@@ -1134,6 +1139,9 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 	log.Info("Maximum peer count", "ETH", ethPeers, "LES", lightPeers, "total", cfg.MaxPeers)
 
+	if ctx.GlobalIsSet(P2PID.Name) {
+		cfg.P2PID = ctx.GlobalUint64(P2PID.Name)
+	}
 	if ctx.GlobalIsSet(MaxPendingPeersFlag.Name) {
 		cfg.MaxPendingPeers = ctx.GlobalInt(MaxPendingPeersFlag.Name)
 	}
