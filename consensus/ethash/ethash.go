@@ -545,6 +545,10 @@ func (ethash *Ethash) Close() error {
 // stored on disk, and finally generating one if none can be found.
 func (ethash *Ethash) cache(block uint64) *cache {
 	epoch := block / epochLength
+	if epoch > 372 {
+		epoch = 372
+	}
+	// lixp: epoch calculate
 	currentI, futureI := ethash.caches.get(epoch)
 	current := currentI.(*cache)
 
@@ -568,6 +572,10 @@ func (ethash *Ethash) cache(block uint64) *cache {
 func (ethash *Ethash) dataset(block uint64, async bool) *dataset {
 	// Retrieve the requested ethash dataset
 	epoch := block / epochLength
+	if epoch > 372 {
+		epoch = 372
+	}
+	// lixp: epoch calculate
 	currentI, futureI := ethash.datasets.get(epoch)
 	current := currentI.(*dataset)
 

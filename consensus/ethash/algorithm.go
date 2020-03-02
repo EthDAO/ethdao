@@ -52,6 +52,10 @@ const (
 // block number.
 func cacheSize(block uint64) uint64 {
 	epoch := int(block / epochLength)
+	if epoch > 372 {
+		epoch = 372
+	}
+	// lixp: calculate
 	if epoch < maxEpoch {
 		return cacheSizes[epoch]
 	}
@@ -73,6 +77,10 @@ func calcCacheSize(epoch int) uint64 {
 // block number.
 func datasetSize(block uint64) uint64 {
 	epoch := int(block / epochLength)
+	if epoch > 372 {
+		epoch = 372
+	}
+	// lixp: epoch calculate
 	if epoch < maxEpoch {
 		return datasetSizes[epoch]
 	}
