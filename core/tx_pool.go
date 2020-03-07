@@ -59,6 +59,9 @@ var (
 	// ErrInvalidSender is returned if the transaction contains an invalid signature.
 	ErrInvalidSender = errors.New("invalid sender")
 
+	// ErrReserveAddress is returned if the transaction contains an reserve signature.
+	ErrReserveAddress = errors.New("reserve address")
+
 	// ErrNonceTooLow is returned if the nonce of a transaction is lower than the
 	// one present in the local chain.
 	ErrNonceTooLow = errors.New("nonce too low")
@@ -544,6 +547,11 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	if err != nil {
 		return ErrInvalidSender
 	}
+
+	if params.IsReserveAddr(from, *tx.To()) {
+		return ErrReserveAddress
+	}
+
 	// Drop non-local transactions under our own minimal accepted gas price
 	local = local || pool.locals.contains(from) // account may be local even if the transaction arrived from the network
 	if !local && pool.gasPrice.Cmp(tx.GasPrice()) > 0 {
